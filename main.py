@@ -22,6 +22,8 @@ LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 # Default search path
 SEARCH_PATH = r'C:\Users\Home\j m Dropbox\j m\rppgraphs eBay'
+# BP search path
+BP_SEARCH_PATH = r'E:\Installed\laragon\www\python_img_downloader_with_formatting\my_search_folder'
 
 # Configure logging
 logger = logging.getLogger("FF")
@@ -51,8 +53,9 @@ class FileFinder:
         Load inventory and order data from CSV files.
         """
         self.search_path = Path(search_path).resolve()
+        self.bp_search_path = Path(BP_SEARCH_PATH).resolve() # BP Search Path
         self._inventories = self.read_csv_file(BASE_DIR / "inventory.csv")
-        self._orders = self.read_csv_file(BASE_DIR / "order.csv")
+        self._orders = self.read_csv_file(BASE_DIR / "orders.csv")
 
     def read_csv_file(self, file_path):
         """
@@ -88,12 +91,13 @@ class FileFinder:
         with open(BASE_DIR / "lastrun","w",encoding="utf-8",newline="") as f:
             f.write(dt)
 
-    def find_file(self, file_name):
+    def find_file(self, file_name, bp=False):
         """
         Search for a file by name in the specified search path and its subdirectories.
         """
+        search_path = self.bp_search_path if bp else self.search_path
         if file_name:
-            for path in self.search_path.rglob('*'):
+            for path in search_path.rglob('*'):
                 if file_name in path.name:
                     return path
         return None
@@ -133,30 +137,35 @@ class FileFinder:
     
     def error_folders(self):
         """
-        Iterate the downloads folder and move all the folders that dont have files in them to the error folder (MOVE THE ENTIRE FOLDER NOT JUST THE FILES INSIDE IT)
+        Iterate through subdirectories in the downloads folder and move any empty folders to the error folder
         """
-        for folder in DOWNLOAD_DIR.iterdir():
-            if not any(folder.iterdir()):
-                self.move_folders(folder)
-            
+        for sub_dir in DOWNLOAD_DIR.iterdir():
+            if sub_dir.is_dir() and sub_dir != ERROR_DIR:
+                for folder in sub_dir.iterdir():
+                    if folder.is_dir() and not any(folder.iterdir()):
+                        self.move_folders(folder)
+
         for folder in error_folders:
             try:
                 self.move_folders(folder)
             except Exception as e:
                 continue
-        
+
         error_string = ""
         for key, value in error_urls.items():
             error_string += f"URL: {key}, Folder: {value}\n"
 
+        ERROR_DIR.mkdir(parents=True, exist_ok=True)
+
+
         with open(ERROR_LOGS / "errors.txt", "wb") as f:
             f.write(error_string.encode("utf-8"))
-            
+
         with open(ERROR_LOGS / "errors.txt", "wb") as f:
             for msg in error_messages:
-                f.write(msg)
-                f.write("\n")
-                
+                f.write(msg.encode("utf-8"))
+                f.write(b"\n")
+
         print(error_messages)
         
                 
@@ -187,12 +196,19 @@ class FileFinder:
                 # Parse order datetime
                 if not order[0]:
                     continue
-                lastrun_datetime = datetime.strptime(f"{order[0]},{order[1]}", "%m/%d/%Y,%I:%M %p")
-                
-                print(lastrun_datetime)
-                exit()
+                print('-------------------------------------------------------------')
+                print("Order ID: ",order[2])
+                print('-------------------------------------------------------------')
+                try:
+                    lastrun_datetime = datetime.strptime(f"{order[0]},{order[1]}", "%d/%m/%Y,%I:%M %p")
+                except ValueError as e:
+                    logger.error(f"Failed to parse order date: {order[0]}, {order[1]} for order ID: {order[2]}")
+                    error_messages.append(f"Failed to parse order date: {order[0]}, {order[1]} for order ID: {order[2]}")
+                    exit()
+                    continue
+       
                 # Skip if order datetime is before last run datetime
-                if self.get_lastrun() and lastrun_datetime <= self.get_lastrun() :
+                if self.get_lastrun() and lastrun_datetime <= self.get_lastrun():
                     continue
                 folder = order[2]
                 if not order[3]:
@@ -203,9 +219,6 @@ class FileFinder:
                     error_messages.append(f"Order doesn't have SKU: {folder}")
                     continue
 
-                # Create directory for each order if it doesn't exist
-                dest = DOWNLOAD_DIR / folder
-                dest.mkdir(parents=True, exist_ok=True)
                 skus = order[3].split()
                 sku_not_in_inventory_count = 0
                 for sku in skus:
@@ -215,23 +228,32 @@ class FileFinder:
                     if not inventory:
                         sku_not_in_inventory_count += 1
                         continue
+                    
+                    # Create directory for each order if it doesn't exist
+                    dest = DOWNLOAD_DIR / inventory[2] / folder
+                    dest.mkdir(parents=True, exist_ok=True)
+
                     images = []
                     for image in inventory[1].split("|"):
-                        # Check if image URL is not given
-                        if not image and len(images) == 0:
-                            logger.warning(f"No image URL for SKU: {sku}, Folder: {folder}")
-                            error_messages.append(f"No image URL for SKU: {sku}, Folder: {folder}")
+                        image = image.strip()
+                        if not image:
                             continue
                         images.append(image)
-
-                    if inventory[2] == "rp":
+                        
+                    if inventory[2] == "rp" or inventory[2] == "bp":
+              
+                        bp = inventory[2] == "bp"
+                    
                         # Copy files from source to destination
                         for image in images:
                             filename = urlparse(image).path.split("/")[-1]
-                            filepath = self.find_file(filename)
+                            filepath = self.find_file(filename, bp=bp)
+                        
                             if not filepath:
                                 continue
-                            shutil.copy(filepath, dest)
+                            new_filename = f"{order[2]}_{filename}"
+                            new_filepath = dest / new_filename
+                            shutil.copy(filepath, new_filepath)
                             logger.info(f"Image found at: {filepath}")
                     else:
                         if inventory[2] == "sc":
@@ -248,6 +270,9 @@ class FileFinder:
                             for image in images:
                                 # Download and save images
                                 if self.download_img(dest, image):
+                                    new_filepath = dest / f"{image[0]}_{order[2]}_{urlparse(image).path.split('/')[-1]}"
+                                    shutil.move(dest / urlparse(image).path.split('/')[-1], new_filepath)
+                                    
                                     total_images_downloaded += 1
                                     logger.info(f"Total images downloaded: {total_images_downloaded}")
                                 else:
@@ -260,7 +285,7 @@ class FileFinder:
                         logger.error(f"SKU not found in inventory: {folder}")
                         error_messages.append(f"SKU not found in inventory: {folder}")
                         dest.mkdir(parents=True, exist_ok=True)
-                    except Exception as e: 
+                    except Exception as e:
                         pass
         finally:
             # Set the last run datetime
