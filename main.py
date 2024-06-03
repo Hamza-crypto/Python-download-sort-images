@@ -55,7 +55,7 @@ class FileFinder:
         self.search_path = Path(search_path).resolve()
         self.bp_search_path = Path(BP_SEARCH_PATH).resolve() # BP Search Path
         self._inventories = self.read_csv_file(BASE_DIR / "inventory.csv")
-        self._orders = self.read_csv_file(BASE_DIR / "orders.csv")
+        self._orders = self.read_csv_file(BASE_DIR / "orders_new.csv")
 
     def read_csv_file(self, file_path):
         """
@@ -111,14 +111,16 @@ class FileFinder:
             'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
         }
 
-    def download_img(self, dest, URL):
+    def download_img(self, dest, URL, sc=False):
         
         """
         Download an image from the specified URL and save it to the destination file path.
         """
         filename = urlparse(URL).path.split("/")[-1]
+        if sc:
+            filename = self.rename_file_for_sc(filename)
+            
         filepath = dest / filename
-        print(filepath)
         try:
             with requests.get(URL, headers=self.get_headers(), stream=True) as r:
                 if r.status_code != 200:
@@ -179,8 +181,28 @@ class FileFinder:
             logger.info(f"Folder moved to error directory: {dest}")
         except Exception as e:
             logger.error(f"Failed to move folder to error directory: {dest}, Error: {e}")
+     
         
+    def rename_file_for_sc(self, original_filename):
+        # Split the filename to separate the main part and the extension
+        name_part, extension = original_filename.rsplit('.', 1)
 
+        # Split the name part using underscore as the delimiter
+        parts = name_part.split('_')
+
+        if len(parts) > 1:
+            # Extract the first letter after the first underscore
+            first_letter_after_first_underscore = parts[1][0]
+
+            # Form the new name
+            new_name_part = f"{first_letter_after_first_underscore}_{name_part}"
+            new_filename = new_name_part + '.' + extension
+
+            return new_filename
+        else:
+            # If the filename does not meet the requirement (no underscores found)
+            return original_filename
+    
     def main(self):
         """
         Main function to process inventory and orders data.
@@ -243,12 +265,11 @@ class FileFinder:
                     if inventory[2] == "rp" or inventory[2] == "bp":
               
                         bp = inventory[2] == "bp"
-                    
+                        
                         # Copy files from source to destination
                         for image in images:
                             filename = urlparse(image).path.split("/")[-1]
                             filepath = self.find_file(filename, bp=bp)
-                        
                             if not filepath:
                                 continue
                             new_filename = f"{order[2]}_{filename}"
@@ -259,8 +280,7 @@ class FileFinder:
                         if inventory[2] == "sc":
                             image = images[0]
                             # Download and save images
-                            print(image)
-                            if self.download_img(dest, image):
+                            if self.download_img(dest, image, sc="sc"):
                                 total_images_downloaded += 1
                                 logger.info(f"Total images downloaded: {total_images_downloaded}")
                             else:
@@ -290,6 +310,8 @@ class FileFinder:
         finally:
             # Set the last run datetime
             formatted_datetime = lastrun_datetime.strftime("%m/%d/%Y,%I:%M %p")
+            
+            formatted_datetime = "04/01/2023,12:20 PM"
             self.set_lastrun(formatted_datetime)
             
         self.error_folders()
