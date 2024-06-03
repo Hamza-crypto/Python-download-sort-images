@@ -55,7 +55,7 @@ class FileFinder:
         self.search_path = Path(search_path).resolve()
         self.bp_search_path = Path(BP_SEARCH_PATH).resolve() # BP Search Path
         self._inventories = self.read_csv_file(BASE_DIR / "inventory.csv")
-        self._orders = self.read_csv_file(BASE_DIR / "orders_new.csv")
+        self._orders = self.read_csv_file(BASE_DIR / "order.csv")
 
     def read_csv_file(self, file_path):
         """
@@ -273,6 +273,7 @@ class FileFinder:
                             if not filepath:
                                 continue
                             new_filename = f"{order[2]}_{filename}"
+                            
                             new_filepath = dest / new_filename
                             shutil.copy(filepath, new_filepath)
                             logger.info(f"Image found at: {filepath}")
@@ -290,7 +291,7 @@ class FileFinder:
                             for image in images:
                                 # Download and save images
                                 if self.download_img(dest, image):
-                                    new_filepath = dest / f"{image[0]}_{order[2]}_{urlparse(image).path.split('/')[-1]}"
+                                    new_filepath = dest / f"{order[2]}_{urlparse(image).path.split('/')[-1]}"
                                     shutil.move(dest / urlparse(image).path.split('/')[-1], new_filepath)
                                     
                                     total_images_downloaded += 1
