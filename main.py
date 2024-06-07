@@ -23,7 +23,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 # Default search path
 SEARCH_PATH = r'C:\Users\Home\j m Dropbox\j m\rppgraphs eBay'
 # BP search path
-BP_SEARCH_PATH = r'E:\Installed\laragon\www\python_img_downloader_with_formatting\my_search_folder'
+BP_SEARCH_PATH = r'E:\Installed\laragon\www\python_img_downloader_with_formatting\my_search_folder' 
 
 # Configure logging
 logger = logging.getLogger("FF")
@@ -82,7 +82,7 @@ class FileFinder:
     def get_lastrun(self):
         try:
             with open(BASE_DIR / "lastrun","r",encoding="utf-8",newline="") as f:
-                return datetime.strptime(f.read(), "%m/%d/%Y,%I:%M %p")
+                return datetime.strptime(f.read(), "%d/%m/%Y,%I:%M %p")
         except Exception as e:
             return None
 
@@ -218,20 +218,20 @@ class FileFinder:
                 # Parse order datetime
                 if not order[0]:
                     continue
-                print('-------------------------------------------------------------')
-                print("Order ID: ",order[2])
-                print('-------------------------------------------------------------')
                 try:
                     lastrun_datetime = datetime.strptime(f"{order[0]},{order[1]}", "%d/%m/%Y,%I:%M %p")
-                except ValueError as e:
-                    logger.error(f"Failed to parse order date: {order[0]}, {order[1]} for order ID: {order[2]}")
-                    error_messages.append(f"Failed to parse order date: {order[0]}, {order[1]} for order ID: {order[2]}")
-                    exit()
-                    continue
-       
+                except Exception as e:
+                    lastrun_datetime = datetime.strptime(f"{order[0]},{order[1]}", "%Y-%m-%d,%I:%M %p")
+      
                 # Skip if order datetime is before last run datetime
                 if self.get_lastrun() and lastrun_datetime <= self.get_lastrun():
                     continue
+                
+                print('-------------------------------------------------------------')
+                print("Order ID: ",order[2])
+                print('-------------------------------------------------------------')
+                
+
                 folder = order[2]
                 if not order[3]:
                     # If order doesn't have SKU, skip it
@@ -310,9 +310,8 @@ class FileFinder:
                         pass
         finally:
             # Set the last run datetime
-            formatted_datetime = lastrun_datetime.strftime("%m/%d/%Y,%I:%M %p")
-            
-            formatted_datetime = "04/01/2023,12:20 PM"
+            formatted_datetime = lastrun_datetime.strftime("%d/%m/%Y,%I:%M %p")
+            #formatted_datetime = "04/01/2023,12:20 PM"
             self.set_lastrun(formatted_datetime)
             
         self.error_folders()
